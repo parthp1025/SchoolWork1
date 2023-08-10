@@ -1,0 +1,607 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>MovieVis</title>
+        <script type="text/javascript" src="d3/d3.js"></script>
+
+		<style>
+		
+       
+
+		body {
+		  font: 10px sans-serif;
+		  chartMargin: 0;
+		}
+		
+		p {
+			font: 14px sans-serif;
+			chartMargin: 0;
+		}
+		
+
+		.axis {
+		  shape-rendering: crispEdges;
+		}
+
+		.x.axis line {
+		  stroke: #000;
+		}
+
+		.x.axis .minor {
+		  stroke-opacity: .5;
+		}
+
+		.x.axis path {
+		  fill: none;
+		  stroke: #000;
+		}
+
+		.y.axis line, .y.axis path {
+		  fill: none;
+		  stroke: #000;
+		}
+		
+		.axis-label {
+			font: bold 14px sans-serif;
+		}
+		
+      
+		
+		
+
+		
+
+		</style>
+    </head>
+    <body>
+		<table>
+			<tbody>
+				<tr>
+					<td><svg class="chart"></svg></td>
+					<td>
+						<p>
+							Show Country:
+							<select class="selectCountry" id="selectCountry">
+							</select>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<td><svg class="pie"></svg></td>
+					<td>
+						<table class="movieTable">
+							<tbody></tbody>
+						</table>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+        <script type="text/javascript">
+		
+		var csvFiles = [
+			"Australia",
+			"Austria",
+			"Belgium",
+			"Brazil",
+			"Bulgaria",
+			"Chile",
+			"China",
+			"Colombia",
+			"Croatia",
+			"Czech",
+			"Denmark",
+			"Ecuador",
+			"Egypt",
+			"Finland",
+			"France",
+			"Germany",
+			"Greece",
+			"Hong Kong",
+			"Hungary",
+			"Iceland",
+			"Italy",
+			"Japan",
+			"Korea",
+			"Lebanon",
+			"Malaysia",
+			"Mexico",
+			"Netherlands",
+			"New Zealand",
+			"Nigeria",
+			"Norway",
+			"Peru",
+			"Philippines",
+			"Poland",
+			"Portugal",
+			"Serbia",
+			"Singapore",
+			"Slovakia",
+			"Slovenia",
+			"South Africa",
+			"Spain",
+			"Sweden",
+			"Thailand",
+			"Turkey",
+			"UK",
+			"Ukraine",
+			"Uruguay"
+		];
+		
+		var select = document.getElementById("selectCountry"); 
+
+		for(var i = 0; i < csvFiles.length; i++) {
+			var csv = csvFiles[i];
+			var el = document.createElement("option");
+			el.textContent = csv;
+			el.value = csv;
+			select.appendChild(el);
+		}
+		
+		var chartMargin = {top: 100, right: 150, bottom: 100, left: 120},
+		chartWidth = 900 - chartMargin.left - chartMargin.right,
+		chartHeight = 600 - chartMargin.top - chartMargin.bottom;
+		
+		var pieMargin = {top: 10, right: 10, bottom: 10, left: 10},
+		pieWidth = 600 - pieMargin.left - pieMargin.right,
+		pieHeight = 600 - pieMargin.top - pieMargin.bottom,
+		pieRadius = Math.min(pieWidth, pieHeight) / 2;
+		
+		// Maximum bubble radius
+		var maxRadius = 50;
+		var radius = maxRadius;
+		
+		// X-axis padding has to match max radius
+		var xAxisPadding = radius;
+
+		// Just want the year parsed
+		var parseYear = d3.time.format("%Y").parse;
+		
+		// Selected chart bubble entry
+		var selectedDataIndex = 0;
+		// Selected pie chart entry
+		var selectedPieDataIndex = 0;
+		
+		// Set the ranges
+		var x = d3.time.scale().range([0, chartWidth]);
+		var y = d3.scale.linear().range([chartHeight, 0]);
+		
+		//Create the chart SVG Viewport
+		var chartSVG = d3.select("body").select(".chart")
+			.attr("width", chartWidth + chartMargin.left + chartMargin.right)
+			.attr("height", chartHeight + chartMargin.bottom + chartMargin.top);
+		
+		//Create the pie SVG Viewport
+		var pieSVG = d3.select("body").select(".pie")
+			.attr("width", pieWidth + pieMargin.left + pieMargin.right)
+			.attr("height", pieHeight + pieMargin.bottom + pieMargin.top)
+		.append("g")
+			.attr("transform", "translate(" + pieWidth / 2 + "," + pieHeight / 2 + ")");
+			
+		var arc = d3.svg.arc()
+			.outerRadius(pieRadius - 10)
+			.innerRadius(0);
+
+		var pie = d3.layout.pie()
+			.sort(function(d) { return d.Gross; })
+			.value(function(d) { return d.Gross; })
+			
+			
+		// Color space
+		var color = d3.scale.category20();
+		
+		// Reload data when selection changes
+		d3.select(".selectCountry").on("change", function() {
+			selectedDataIndex = 0;
+			reloadData();
+		});
+		
+		var gdpTable = {};
+		
+		// Load GDP data
+		d3.csv("csv/GDP.csv", function(error, data) {
+			data.forEach(function(d) {
+				var countryName = d["Country Name"];				
+				var arr = new Array();
+				
+				for(var i = 2001; i < 2014; i++) {
+					var year = ":" + i;
+					var val = Number(d[year].toString());
+					arr.push(val);
+				}
+				
+				gdpTable[countryName] = arr;
+			});
+			
+			// Reload the data
+			reloadData();
+		});
+		
+		function reloadData() {
+		
+			var countrySelect = document.getElementById("selectCountry");
+			var country = countrySelect.options[countrySelect.selectedIndex].value;
+			
+			var selectedData = [];
+			var yearArray = [];
+			var genreGrossDict = {};
+			var w = 400,
+				h = 400,
+				r = Math.min(w,h)/2
+				labelr = r + 80;
+		
+			// Load in a debug data file
+			d3.csv("csv/" + country + ".csv", function(error, data) {
+			
+				
+				// Parse out the year for each data entry
+				data.forEach(function(d) {
+					d.YearNum = parseInt(d.Year);
+					d.Year = parseYear(d.Year);
+					
+					if(yearArray.length == 0) {
+						yearArray.push(d.YearNum);
+					}
+					else if(yearArray[yearArray.length - 1] != d.YearNum) {
+						yearArray.push(d.YearNum);
+					}
+				});
+				
+				yearArray.sort();
+				
+				data.forEach(function(d) {						
+					if(d.YearNum == yearArray[selectedDataIndex]) {
+						selectedData.push(d);
+						
+						var genres = d.Genre.split("|");
+						
+						if(genres.length != 0) {
+							var grossSplit = d.Gross / genres.length;
+							genres.forEach(function(g) {
+								if(!genreGrossDict.hasOwnProperty(g)) {							
+									genreGrossDict[g] = grossSplit;
+								}
+								else {
+									genreGrossDict[g] += grossSplit;
+								}
+							});
+						}
+					}
+				});
+				
+				var genreGrossValues = [];
+				
+				for(var g in genreGrossDict) {
+					genreGrossValues.push({Genre: g, Gross: genreGrossDict[g]});
+				};
+				
+				var minYear = d3.min(data, function(d) { return d.YearNum; });
+				var maxYear = d3.max(data, function(d) { return d.YearNum; });
+				
+				var groupedData = [];
+				var currentGenreMovieArray = [];
+				
+				for(var year = minYear; year <= maxYear; year++) {
+					var currentYearGross = 0;
+					
+					data.forEach(function(d) {
+						if(d.YearNum == year) {
+							currentYearGross += parseInt(d.Gross);
+						}
+						
+						// Only check once during this for loop and year must be selected
+						if(year == minYear && d.YearNum == yearArray[selectedDataIndex]) {
+							var selectedGenre = genreGrossValues[selectedPieDataIndex].Genre;
+							if(d.Genre.indexOf(selectedGenre) > 0 || d.Genre == selectedGenre) {
+								currentGenreMovieArray.push(d);
+							}
+						}
+					});
+					
+					if(currentYearGross <= 0) {
+						continue;
+					}
+					
+					groupedData.push({Year: parseYear("" + year), Gross: currentYearGross, GDP: gdpTable[country][year - minYear]});
+				}
+				
+				var maxGDP = d3.max(gdpTable[country]);
+				var maxGross = d3.max(groupedData, function(d) { return d.Gross; });
+		
+				// Create axes and scales
+				var x = d3.time.scale().range([0, chartWidth]);
+				var y = d3.scale.linear().range([chartHeight, 0]);
+				var xAxis = d3.svg.axis().scale(x).ticks(groupedData.length).orient("bottom");
+				var yAxis = d3.svg.axis().scale(y).orient("left");
+			
+				// Define domain for both axes
+				x.domain(d3.extent(groupedData, function(d) { return d.Year; }));
+				y.domain([0, maxGDP/1000000000]);
+				// Uncomment the below to show from min to max gross instead of 0 to max
+				//y.domain(d3.extent(groupedData, function(d) { return d.Gross; }));
+				
+				if(groupedData.length >= 2) {
+					var tickArr = x.ticks(groupedData.length);
+					var tickDistance = x(tickArr[tickArr.length - 1]) - x(tickArr[tickArr.length - 2]);
+					radius = Math.min(tickDistance / 2, maxRadius);
+					xAxisPadding = radius;
+				}
+			
+				chartSVG.selectAll("*").remove();
+				pieSVG.selectAll("*").remove();
+				
+				/// Chart creation
+			
+				// Add dots
+				chartSVG.selectAll("dot")
+					.data(groupedData)
+					.enter().append("circle")
+					.filter(function(d) { return d.Gross > 0; })
+					.style("fill", function(d,i){ 
+						if(selectedDataIndex == i)
+							return "white";
+						else
+							return color(i);
+					})
+					.style("stroke", function(d,i){ 
+						if(selectedDataIndex == i) 
+							return color(i); 
+						else 
+							return "none"; 
+					})
+
+					.style("stroke-width", function(d,i){ 
+						if(selectedDataIndex == i) 
+							return "5"; 
+						else 
+							return "0"; 
+					})
+
+					.attr("r", function(d) { 
+						return radius * (d.Gross / maxGross)
+					})
+					.attr("cx", function(d) { 
+						return chartMargin.left + x(d.Year) + xAxisPadding; 
+					})
+					.attr("cy", function(d) { 
+						return chartMargin.top + y(d.GDP/1000000000); 
+					})
+					.on("mouseover", function(d,i) { setSelectedDataIndex(i); });
+					
+				// Add the X Axis
+				chartSVG.append("g")
+					.attr("class", "x axis")
+					.attr("transform", "translate(" + (chartMargin.left + xAxisPadding) + "," + (chartMargin.top + chartHeight) + ")")
+					.call(xAxis);
+					
+				// Add X axis label
+				chartSVG.append("text")
+					.attr("class", "axis-label")
+					.attr("text-anchor", "end")
+					.attr("x", chartMargin.left + (chartWidth / 2) + 40)
+					.attr("y", chartMargin.top + chartHeight + 40)
+					.text("Year");
+
+				// Add the Y Axis
+				chartSVG.append("g")
+					.attr("class", "y axis")
+					.attr("transform", "translate(" + chartMargin.left + ", " + chartMargin.top + ")")
+					.call(yAxis);
+					
+				// Add Y axis label
+				chartSVG.append("text")
+					.attr("class", "axis-label")
+					.attr("text-anchor", "end")
+					.attr("x", -(chartMargin.top + (chartHeight / 2) - 70))
+					.attr("y", 10)
+					.attr("transform", "rotate(-90)")
+					.text("GDP (In Billions of Dollars)");
+					
+				/// Pie creation
+				
+				var g = pieSVG.selectAll(".arc")
+					.data(pie(genreGrossValues))
+				.enter().append("g")
+					.attr("class", "arc");
+				
+				  
+
+				//Color by Genre
+					
+				g.append("path")
+					.attr("d", arc)
+					.style("fill", function(d,i) {
+						if(d.data.Genre == "Romance")
+							return "#FFCC99";
+
+						else if(d.data.Genre == "Action")
+							return "#FE2E2E";
+
+						else if(d.data.Genre == "Adventure")
+							return "#FF8000";
+
+						else if(d.data.Genre == "Sci-Fi")
+							return "#00BFFF";
+
+						else if(d.data.Genre == "Mystery")
+							return "#00CC99";
+
+						else if(d.data.Genre == "War")
+							return "#CC0066";
+
+						else if(d.data.Genre == "Biography")
+							return "#99CCFF";
+
+						else if(d.data.Genre == "Animation")
+							return "#339933";
+
+						else if(d.data.Genre == "Comedy")
+							return "#FF6699";
+
+						else if(d.data.Genre == "Family")
+							return "#00FFFF";
+
+						else if(d.data.Genre == "Western")
+							return "#CC6600";
+
+						else if(d.data.Genre == "Drama")
+							return "#9966FF";
+
+						else if(d.data.Genre == "Fantasy")
+							return "#80FF00";
+
+						else if(d.data.Genre == "History")
+							return "#FFBF00";
+
+						else if(d.data.Genre == "Crime")
+							return "#2E2EFE";
+
+						else if(d.data.Genre == "Thriller")
+							return "#8A0808";
+
+						else if(d.data.Genre == "Other")
+							return "#BDBDBD";
+
+						else if(d.data.Genre == "Horror")
+							return "#8904B1";
+
+						else
+							return color(i); 
+					})
+					.style("stroke", function(d,i){ 
+						if(selectedPieDataIndex == i)
+							if(d.data.Genre == "Romance")
+								return "#FFCC99";
+
+							else if(d.data.Genre == "Action")
+								return "#FE2E2E";
+
+							else if(d.data.Genre == "Adventure")
+								return "#FF8000";
+
+							else if(d.data.Genre == "Sci-Fi")
+								return "#00BFFF";
+
+							else if(d.data.Genre == "Mystery")
+								return "#00CC99";
+
+							else if(d.data.Genre == "War")
+								return "#CC0066";
+
+							else if(d.data.Genre == "Biography")
+								return "#99CCFF";
+
+							else if(d.data.Genre == "Animation")
+								return "#339933";
+
+							else if(d.data.Genre == "Comedy")
+								return "#FF6699";
+
+							else if(d.data.Genre == "Family")
+								return "#00FFFF";
+
+							else if(d.data.Genre == "Western")
+								return "#CC6600";
+
+							else if(d.data.Genre == "Drama")
+								return "#9966FF";
+
+							else if(d.data.Genre == "Fantasy")
+								return "#80FF00";
+
+							else if(d.data.Genre == "History")
+								return "#FFBF00";
+
+							else if(d.data.Genre == "Crime")
+								return "#2E2EFE";
+
+							else if(d.data.Genre == "Thriller")
+								return "#8A0808";
+
+							else if(d.data.Genre == "Other")
+								return "#BDBDBD";
+
+							else if(d.data.Genre == "Horror")
+								return "#8904B1";
+
+							else
+								return color(i);
+						else 
+							return "white"; 
+					})
+					.style("stroke-width", function(d,i){ 
+						if(selectedPieDataIndex == i) 
+							return "0"; 
+						else 
+							return "0"; 
+					})
+
+					.style("opacity", function(d,i){
+						if(selectedPieDataIndex == i)
+							return ".6";
+						else
+							return "1";
+					})
+					.on("mouseover", function(d,i) {
+						setSelectedPieDataIndex(i); 
+					});
+					
+				//text
+				g.append("text")
+					.attr("transform", function(d){
+						var k = arc.centroid(d),
+						x = k[0],
+						y = k[1],
+						h = Math.sqrt(x*x + y*y);
+						return "translate("+ (x/h * labelr) + ',' + (y/h * labelr) + ")";})
+					.attr("dy", ".35em")
+					.attr("text-anchor", function(d){return (d.endAngle + d.startAngle)/2 > Math.PI ? "end" : "start";})
+					.text(function(d){return d.data.Genre;});
+					
+				                   
+
+					
+					
+
+				g.append("title")
+					/*.attr("transform", function(d) { return "translate(" + arc.centroid(d) + ")"; })
+					.attr("dy", ".35em")
+					.style("text-anchor", "middle")*/
+					.text(function(d,i) { /*if(selectedPieDataIndex == i)*/ return d.data.Genre; /*else return "";*/ });
+					
+					
+				/// Table creation
+				
+				d3.selectAll(".movieTable")
+					.style("border", "1");
+				
+				var table = d3.selectAll(".movieTable").select("tbody");
+				table.selectAll("*").remove();
+				
+				currentGenreMovieArray.forEach(function(movie) {
+					var cell = table.append("tr").append("td");
+					cell.html(movie["Movie Title"]);
+				});
+				
+			
+				
+				
+		
+			});
+			
+			function setSelectedDataIndex(i) {
+				selectedDataIndex = i;
+				selectedPieDataIndex = 0;
+				reloadData();
+			}
+			
+			function setSelectedPieDataIndex(i) {
+				selectedPieDataIndex = i;
+				reloadData();
+			}
+		}
+		
+        </script>
+    </body>
+</html>
