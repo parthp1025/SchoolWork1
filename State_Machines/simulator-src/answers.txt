@@ -1,0 +1,36 @@
+CS 2200 Fall 2014
+Project 4
+Name: Parth Patel
+GT Number:ppatel92
+
+Problem 1B
+----------
+Difference in execution time and the time spent in READY state is observed when more CPU
+cores are tasked with running the OS simulation. 2 CPU cores spend 37.2s executing and 33.1s
+in the READY state. Increasing the CPU cores to 4, reduces this time to 33.2 s and 0s respectively.
+Thus, we can conlcude that there is a linear relationship between the number of CPUs and the total
+execution time.
+
+
+/* Fix me */
+
+Problem 2B
+----------
+Running the scheduler with time slices 200, 400, 600 and 800ms it is observed that 
+execution time remains constant, context-switch time increases
+and time spent in ready state decreases minutely. 
+
+
+
+/* Fix me */
+
+Problem 3B
+----------
+Running each of the three scheduling algorithms using one cpu, it is observed that Static
+Priority is the closest to SJF because in SJF processes are given ranks based on their 
+remaining time and the processes with the highest ranks get priority which is almost 
+the same case in Static Priority.
+
+
+/* Fix me */
+
